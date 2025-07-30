@@ -3,7 +3,7 @@ import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { visit, EXIT } from 'unist-util-visit';
 import { toString } from 'mdast-util-to-string';
-import { formatDistanceToNow } from 'date-fns';
+import { queryGithubApi } from './github.svelte.js';
 
 class Repository {
     constructor(url, name, path) {
@@ -52,11 +52,15 @@ class Section {
     }
 }
 
-function formatDate(date) {
-    if (!date) {
-        return '';
+export class HowAwesomeError extends Error {
+    constructor(message, repoPath) {
+        super(message);
+        this.repoPath = repoPath;
     }
-    return formatDistanceToNow(date, { addSuffix: true });
+
+    get repoUrl() {
+        return `https://github.com${this.repoPath}`;
+    }
 }
 
 function parseMarkdown(markdownText) {
@@ -65,11 +69,6 @@ function parseMarkdown(markdownText) {
         mdastExtensions: [gfmFromMarkdown()],
     });
     return mdast;
-}
-
-async function queryGithubApi(apiURL) {
-    console.log(`Querying GitHub API: ${apiURL}`);
-    return await (await fetch(apiURL)).json();
 }
 
 async function fetchRepoInformation(repoPath) {
@@ -91,17 +90,19 @@ async function fetchRepoInformation(repoPath) {
 }
 
 export async function fetchAwesomeList(repoPath) {
-    console.log(`Fetching awesome list from: ${repoPath}`);
-    const response = await fetch(
-        `https://raw.githubusercontent.com${repoPath}/main/README.md`,
-    );
-    if (!response.ok) {
-        throw {
-            repoUrl: `https://github.com${repoPath}`,
-            repoPath,
-        };
+    for (const readmeFilename of ['README.md', 'readme.md']) {
+        const url = `https://raw.githubusercontent.com${repoPath}/main/${readmeFilename}`;
+        console.log(`Fetching awesome list from: ${repoPath}. URL: ${url}`);
+        const response = await fetch(url);
+        if (!response.ok) {
+            continue;
+        }
+        return await response.text();
     }
-    return await response.text();
+    throw new HowAwesomeError({
+        message: `Failed to fetch README.md`,
+        repoPath,
+    });
 }
 
 function parseAwesomeList(markdownAST) {
@@ -109,16 +110,19 @@ function parseAwesomeList(markdownAST) {
     let currentSection = { repos: [] };
     let appendSection = () => {
         if (currentSection.repos.length > 0) {
-            parseAwesomeList.push(currentSection);
+            parsedAwesomeList.push(currentSection);
         }
-        currentSection = {
-            heading: toString(node),
-            repos: [],
-        };
     };
     visit(markdownAST, node => {
+        if (node === undefined || node === null) {
+            return;
+        }
         if (node.type == 'heading') {
             appendSection();
+            currentSection = {
+                heading: toString(node),
+                repos: [],
+            };
         } else if (node.type == 'listItem') {
             let link = null;
             visit(node, child => {
