@@ -1,7 +1,7 @@
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { fromMarkdown } from 'mdast-util-from-markdown';
-import { visit, EXIT } from 'unist-util-visit';
+import { visit, EXIT, CONTINUE } from 'unist-util-visit';
 import { toString } from 'mdast-util-to-string';
 import { queryGithubApi } from './github.svelte.js';
 
@@ -92,17 +92,13 @@ async function fetchRepoInformation(repoPath) {
 export async function fetchAwesomeList(repoPath) {
     for (const readmeFilename of ['README.md', 'readme.md']) {
         const url = `https://raw.githubusercontent.com${repoPath}/main/${readmeFilename}`;
-        console.log(`Fetching awesome list from: ${repoPath}. URL: ${url}`);
         const response = await fetch(url);
         if (!response.ok) {
             continue;
         }
         return await response.text();
     }
-    throw new HowAwesomeError({
-        message: `Failed to fetch README.md`,
-        repoPath,
-    });
+    throw new HowAwesomeError(`Failed to fetch README.md`, repoPath);
 }
 
 function parseAwesomeList(markdownAST) {
@@ -128,10 +124,10 @@ function parseAwesomeList(markdownAST) {
             visit(node, child => {
                 if (
                     child.type == 'link' &&
-                    URL.parse(child.url)?.hostname == 'github.com'
+                    URL.parse(child.url)?.hostname == 'github.com' &&
+                    link === null
                 ) {
                     link = child;
-                    return EXIT;
                 }
             });
             if (link !== null) {
@@ -140,6 +136,7 @@ function parseAwesomeList(markdownAST) {
                         url: link.url,
                         name: toString(link),
                         path: URL.parse(link.url).pathname,
+                        description: toString(node).replace(toString(link), ''),
                     },
                     /*new Repository(
                         link.url,

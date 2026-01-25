@@ -4,7 +4,7 @@
     import { formatDistanceToNow } from 'date-fns';
 
     let repoUrl: string | null = $state(
-        'https://github.com/sindresorhus/awesome',
+        'https://github.com/Strift/awesome-esports',
     );
     let repoPath: string | null = $derived.by(() => {
         if (!repoUrl) return null;
@@ -54,13 +54,18 @@
                 {/each}
             </div>
         {:catch err}
-            {#if err instanceof HowAwesomeError}
-                Unable to process <a href={err.repoUrl}>
-                    {err.repoPath}
-                </a>: {err.message}
-            {:else}
-                {err}
-            {/if}
+            <div class="card alert">
+                {#if err instanceof HowAwesomeError}
+                    Unable to process
+                    <a href={err.repoUrl}>
+                        {err.repoPath}
+                    </a>:
+                    <br />
+                    {err.message}
+                {:else}
+                    {err}
+                {/if}
+            </div>
         {/await}
     </div>
 </main>

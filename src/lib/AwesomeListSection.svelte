@@ -20,10 +20,10 @@
                 <td>
                     <a href={repo.url} target="_blank">{repo.name}</a>
                 </td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+                <td>{repo.description}</td>
+                <td>{repo.createdAt}</td>
+                <td>{repo.stars}</td>
+                <td>{repo.updatedAt}</td>
             </tr>
         {/each}
     </tbody>
