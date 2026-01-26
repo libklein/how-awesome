@@ -63,7 +63,7 @@ export class HowAwesomeError extends Error {
     }
 }
 
-function parseMarkdown(markdownText) {
+export function parseMarkdown(markdownText) {
     const mdast = fromMarkdown(markdownText, {
         extensions: [gfm()],
         mdastExtensions: [gfmFromMarkdown()],
@@ -158,4 +158,43 @@ export async function processAwesomeList(repoURL) {
     const parsedAwesomeList = parseAwesomeList(parseMarkdown(repoReadme));
     console.log(parsedAwesomeList);
     return parsedAwesomeList;
+}
+
+export function annotateLinkNode(linkNode, repoInfo) {}
+
+export function annotateAwesomeAST(markdownAST, repoURL) {
+    visit(markdownAST, node => {
+        if (node === undefined || node === null) {
+            return;
+        }
+        if (node.type == 'heading') {
+            // Do nothing for now - keep track of these later and annotate with
+            // buttons
+        } else if (node.type == 'listItem') {
+            // Discover link
+            let link = null;
+            visit(node, child => {
+                if (child.type !== 'link') {
+                    return CONTINUE;
+                }
+                const parsedUrl = URL.parse(child.url);
+                if (
+                    parsedUrl?.hostname == 'github.com' &&
+                    !parsedUrl?.pathname?.startsWith(repoURL)
+                ) {
+                    link = child;
+                    return EXIT;
+                }
+            });
+            if (link !== null) {
+                console.log(
+                    `Annotating link: ${toString(link)} -> ${link.url}`,
+                    link,
+                );
+
+                // TODO: Fetch repo info, cache it as well
+                annotateLinkNode(link, null);
+            }
+        }
+    });
 }
