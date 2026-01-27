@@ -4,12 +4,15 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { visit, EXIT, CONTINUE } from 'unist-util-visit';
 import { toString } from 'mdast-util-to-string';
 import { queryGithubApi } from './github.svelte.js';
+import { toHtml } from 'hast-util-to-html';
+import { toHast } from 'mdast-util-to-hast';
 
 class Repository {
-    constructor(url, name, path) {
+    constructor(url) {
         this.url = url;
-        this.name = name;
-        this.path = path;
+        this.name = this.url.pathname.split('/')[2];
+        this.author = this.url.pathname.split('/')[1];
+        this.path = this.url.pathname.split('/').slice(0, 3).join('/');
 
         this.stars = null;
         this.createdAt = null;
@@ -32,8 +35,6 @@ class Repository {
         this.archived = repoInfo.archived;
         this.openIssues = repoInfo.open_issues;
         this.updatedAt = repoInfo.updated_at;
-
-        this.fetched = true;
     }
 }
 
@@ -160,9 +161,19 @@ export async function processAwesomeList(repoURL) {
     return parsedAwesomeList;
 }
 
-export function annotateLinkNode(linkNode, repoInfo) {}
+export function transformLinkNode(linkNode) {
+    const parsedRepoUrl = URL.parse(linkNode.url);
+    parsedRepoUrl.hash = '';
+    parsedRepoUrl.search = '';
+    parsedRepoUrl.query = '';
+
+    linkNode.repo = new Repository(parsedRepoUrl);
+    linkNode.type = 'awesomeLink';
+}
 
 export function annotateAwesomeAST(markdownAST, repoURL) {
+    // Transform the AST in-place
+    // TODO: Replace with map?
     visit(markdownAST, node => {
         if (node === undefined || node === null) {
             return;
@@ -180,21 +191,38 @@ export function annotateAwesomeAST(markdownAST, repoURL) {
                 const parsedUrl = URL.parse(child.url);
                 if (
                     parsedUrl?.hostname == 'github.com' &&
-                    !parsedUrl?.pathname?.startsWith(repoURL)
+                    !parsedUrl?.pathname?.startsWith(repoURL) &&
+                    parsedUrl.pathname !== '/'
                 ) {
                     link = child;
                     return EXIT;
                 }
             });
             if (link !== null) {
-                console.log(
-                    `Annotating link: ${toString(link)} -> ${link.url}`,
-                    link,
-                );
-
-                // TODO: Fetch repo info, cache it as well
-                annotateLinkNode(link, null);
+                transformLinkNode(link);
             }
         }
     });
+
+    const hast = toHast(markdownAST, {
+        handlers: {
+            awesomeLink(h, node) {
+                console.log('Transforming awesomeLink node:', node);
+                return {
+                    type: 'element',
+                    tagName: 'a',
+                    properties: {
+                        href: node.url,
+                        className: 'awesome-link',
+                        // TODO: Transform to data properties
+                        repo: JSON.stringify(node.repo),
+                    },
+                    children: h.all(node),
+                };
+            },
+        },
+    });
+
+    const html = toHtml(hast);
+    console.log('Generated HTML:', html);
 }
