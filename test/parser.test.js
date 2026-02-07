@@ -7,9 +7,7 @@ test('Annotates awesome AST', async () => {
         await fetch(`${repoUrl}/raw/refs/heads/main/README.md`)
     ).text();
 
-    const awesomeListMD = parseMarkdown(awesomeList);
-
-    annotateAwesomeAST(awesomeListMD, repoUrl);
+    annotateAwesomeAST(awesomeList, repoUrl);
 });
 
 // TODO:

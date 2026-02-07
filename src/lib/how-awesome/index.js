@@ -1,11 +1,15 @@
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { fromMarkdown } from 'mdast-util-from-markdown';
-import { visit, EXIT, CONTINUE } from 'unist-util-visit';
-import { toString } from 'mdast-util-to-string';
+import { rehype } from 'rehype';
 import { queryGithubApi } from './github.svelte.js';
-import { toHtml } from 'hast-util-to-html';
-import { toHast } from 'mdast-util-to-hast';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkGfm from 'remark-gfm';
+import remarkRehype from 'remark-rehype';
+import rehypeSlug from 'rehype-slug';
+import rehypeStringify from 'rehype-stringify';
+import { visit, EXIT, CONTINUE } from 'unist-util-visit';
 
 class Repository {
     constructor(url) {
@@ -64,14 +68,6 @@ export class HowAwesomeError extends Error {
     }
 }
 
-export function parseMarkdown(markdownText) {
-    const mdast = fromMarkdown(markdownText, {
-        extensions: [gfm()],
-        mdastExtensions: [gfmFromMarkdown()],
-    });
-    return mdast;
-}
-
 async function fetchRepoInformation(repoPath) {
     return {
         stars: 0,
@@ -102,62 +98,9 @@ export async function fetchAwesomeList(repoPath) {
     throw new HowAwesomeError(`Failed to fetch README.md`, repoPath);
 }
 
-function parseAwesomeList(markdownAST) {
-    const parsedAwesomeList = [];
-    let currentSection = { repos: [] };
-    let appendSection = () => {
-        if (currentSection.repos.length > 0) {
-            parsedAwesomeList.push(currentSection);
-        }
-    };
-    visit(markdownAST, node => {
-        if (node === undefined || node === null) {
-            return;
-        }
-        if (node.type == 'heading') {
-            appendSection();
-            currentSection = {
-                heading: toString(node),
-                repos: [],
-            };
-        } else if (node.type == 'listItem') {
-            let link = null;
-            visit(node, child => {
-                if (
-                    child.type == 'link' &&
-                    URL.parse(child.url)?.hostname == 'github.com' &&
-                    link === null
-                ) {
-                    link = child;
-                }
-            });
-            if (link !== null) {
-                currentSection.repos.push(
-                    {
-                        url: link.url,
-                        name: toString(link),
-                        path: URL.parse(link.url).pathname,
-                        description: toString(node).replace(toString(link), ''),
-                    },
-                    /*new Repository(
-                        link.url,
-                        toString(link),
-                        URL.parse(link.url).pathname,
-                    ),*/
-                );
-            }
-        }
-    });
-    appendSection();
-    return parsedAwesomeList;
-}
-
 export async function processAwesomeList(repoURL) {
     const repoReadme = await fetchAwesomeList(repoURL);
-    console.log(`Fetched README from ${repoURL}`);
-    console.log(repoReadme);
-    const parsedAwesomeList = parseAwesomeList(parseMarkdown(repoReadme));
-    console.log(parsedAwesomeList);
+    const parsedAwesomeList = annotateAwesomeAST(repoReadme, repoURL);
     return parsedAwesomeList;
 }
 
@@ -167,62 +110,74 @@ export function transformLinkNode(linkNode) {
     parsedRepoUrl.search = '';
     parsedRepoUrl.query = '';
 
-    linkNode.repo = new Repository(parsedRepoUrl);
+    linkNode.repo = parsedRepoUrl;
     linkNode.type = 'awesomeLink';
 }
 
-export function annotateAwesomeAST(markdownAST, repoURL) {
-    // Transform the AST in-place
-    // TODO: Replace with map?
-    visit(markdownAST, node => {
-        if (node === undefined || node === null) {
-            return;
-        }
-        if (node.type == 'heading') {
-            // Do nothing for now - keep track of these later and annotate with
-            // buttons
-        } else if (node.type == 'listItem') {
-            // Discover link
-            let link = null;
-            visit(node, child => {
-                if (child.type !== 'link') {
-                    return CONTINUE;
+export function annotateAwesomeAST(markdownText, repoURL) {
+    const processor = unified()
+        .use(remarkParse)
+        .use(remarkGfm)
+        .use(() => tree => {
+            visit(tree, node => {
+                if (node === undefined || node === null) {
+                    return;
                 }
-                const parsedUrl = URL.parse(child.url);
-                if (
-                    parsedUrl?.hostname == 'github.com' &&
-                    !parsedUrl?.pathname?.startsWith(repoURL) &&
-                    parsedUrl.pathname !== '/'
-                ) {
-                    link = child;
-                    return EXIT;
+                if (node.type == 'heading') {
+                    node.type = 'awesomeSection';
+                } else if (node.type == 'listItem') {
+                    let link = null;
+                    visit(node, child => {
+                        if (child.type !== 'link') {
+                            return CONTINUE;
+                        }
+                        const parsedUrl = URL.parse(child.url);
+                        if (
+                            parsedUrl?.hostname == 'github.com' &&
+                            !parsedUrl?.pathname?.startsWith(repoURL) &&
+                            parsedUrl.pathname !== '/'
+                        ) {
+                            link = child;
+                            return EXIT;
+                        }
+                    });
+                    if (link !== null) {
+                        transformLinkNode(link);
+                    }
                 }
             });
-            if (link !== null) {
-                transformLinkNode(link);
-            }
-        }
-    });
-
-    const hast = toHast(markdownAST, {
-        handlers: {
-            awesomeLink(h, node) {
-                console.log('Transforming awesomeLink node:', node);
-                return {
-                    type: 'element',
-                    tagName: 'a',
-                    properties: {
-                        href: node.url,
-                        className: 'awesome-link',
-                        // TODO: Transform to data properties
-                        repo: JSON.stringify(node.repo),
-                    },
-                    children: h.all(node),
-                };
+        })
+        .use(remarkRehype, {
+            handlers: {
+                awesomeLink(state, node, parent) {
+                    const hastNode = state.one(
+                        Object.assign({}, node, {
+                            type: 'link',
+                        }),
+                        parent,
+                    );
+                    hastNode.properties = hastNode.properties ?? {};
+                    hastNode.properties.className = 'awesome-link';
+                    hastNode.properties.repo = node.repo;
+                    return hastNode;
+                },
+                awesomeSection(state, node, parent) {
+                    const hastNode = state.one(
+                        Object.assign({}, node, {
+                            type: 'heading',
+                        }),
+                        parent,
+                    );
+                    hastNode.properties = hastNode.properties ?? {};
+                    hastNode.properties.className = 'awesome-section';
+                    return hastNode;
+                },
             },
-        },
-    });
+        })
+        .use(rehypeSlug)
+        .use(rehypeStringify);
 
-    const html = toHtml(hast);
-    console.log('Generated HTML:', html);
+    const result = processor.processSync(markdownText);
+
+    return String(result);
 }

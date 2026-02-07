@@ -24,10 +24,12 @@ a:hover {
 
 body {
     margin: 0;
-    display: flex;
-    place-items: center;
     min-width: 320px;
-    min-height: 100vh;
+    height: 100vh;
+}
+
+main {
+    height: 100%;
 }
 
 h1 {
@@ -39,11 +41,26 @@ h1 {
     padding: 2em;
 }
 
+#page-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#page-container.repo-selection-view {
+    justify-content: center;
+}
+
 #app {
     max-width: 1280px;
     margin: 0 auto;
     padding: 2rem;
-    text-align: center;
+    height: 100%;
+}
+
+.repo-selector {
+    display: flex;
+    justify-content: center;
 }
 
 button {
