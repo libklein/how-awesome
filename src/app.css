@@ -63,6 +63,44 @@ h1 {
     justify-content: center;
 }
 
+.repo-meta {
+    margin-left: 0.35rem;
+    font-size: 0.9em;
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+.repo-meta-text {
+    margin-right: 0.4rem;
+}
+
+.repo-fetch-button,
+.section-fetch-button {
+    margin-left: 0.25rem;
+    font-size: 0.8em;
+    padding: 0.2em 0.6em;
+}
+
+.section-fetch-button {
+    margin-left: 0.6rem;
+    vertical-align: middle;
+}
+
+.section-indicator {
+    margin-left: 0.5rem;
+    font-size: 0.85em;
+    color: #ffb347;
+}
+
+.fetch-status-banner {
+    margin: 0 0 1rem 0;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #ffb347;
+    border-radius: 8px;
+    color: #ffb347;
+    background: rgba(255, 179, 71, 0.1);
+}
+
 button {
     border-radius: 8px;
     border: 1px solid transparent;

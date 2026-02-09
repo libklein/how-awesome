@@ -68,21 +68,30 @@ export class HowAwesomeError extends Error {
     }
 }
 
-async function fetchRepoInformation(repoPath) {
+export async function fetchRepoInformation(repoPath) {
+    const response = await queryGithubApi(
+        `https://api.github.com/repos${repoPath}`,
+    );
+    if (!response.ok) {
+        const error = new Error(
+            response?.data?.message ?? `GitHub API error (${response.status})`,
+        );
+        error.status = response.status;
+        error.rateLimitRemaining = response.headers?.get?.(
+            'x-ratelimit-remaining',
+        );
+        throw error;
+    }
     return {
-        stars: 0,
-        created_at: new Date('2025-06-17T12:21:45Z'),
-        archived: false,
-        open_issues: 0,
-        updated_at: new Date('2025-07-24T16:53:31Z'),
-    };
-    const response = queryGithubApi(`https://api.github.com/repos${repoPath}`);
-    return {
-        stars: response?.starquazers_count,
-        created_at: response?.created_at,
-        archived: response?.archived,
-        open_issues: response?.open_issues_count,
-        updated_at: response?.updated_at,
+        stars: response?.data?.stargazers_count ?? null,
+        created_at: response?.data?.created_at
+            ? new Date(response.data.created_at)
+            : null,
+        archived: response?.data?.archived ?? null,
+        open_issues: response?.data?.open_issues_count ?? null,
+        updated_at: response?.data?.updated_at
+            ? new Date(response.data.updated_at)
+            : null,
     };
 }
 
@@ -110,7 +119,8 @@ export function transformLinkNode(linkNode) {
     parsedRepoUrl.search = '';
     parsedRepoUrl.query = '';
 
-    linkNode.repo = parsedRepoUrl;
+    linkNode.repoPath = parsedRepoUrl.pathname;
+    linkNode.repoUrl = `https://github.com${parsedRepoUrl.pathname}`;
     linkNode.type = 'awesomeLink';
 }
 
@@ -158,7 +168,8 @@ export function annotateAwesomeAST(markdownText, repoURL) {
                     );
                     hastNode.properties = hastNode.properties ?? {};
                     hastNode.properties.className = 'awesome-link';
-                    hastNode.properties.repo = node.repo;
+                    hastNode.properties['data-repo-path'] = node.repoPath;
+                    hastNode.properties['data-repo-url'] = node.repoUrl;
                     return hastNode;
                 },
                 awesomeSection(state, node, parent) {
