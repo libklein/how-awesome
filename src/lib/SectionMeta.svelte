@@ -5,6 +5,8 @@
         hasError: boolean;
         hasRateLimit: boolean;
         allLoaded: boolean;
+        fetchedCount: number;
+        totalCount: number;
     };
 
     let {
@@ -16,43 +18,52 @@
     } = $props();
 </script>
 
-{#if !$sectionState.allLoaded}
-    <button class="section-fetch-pill" type="button" onclick={onFetchAll}>
-        Fetch all
-    </button>
+{#if $sectionState.totalCount > 0 && !$sectionState.allLoaded}
+    <a
+        class="section-count section-count-link"
+        href="#"
+        onclick={event => {
+            event.preventDefault();
+            onFetchAll();
+        }}
+    >
+        Fetch all ({$sectionState.fetchedCount}/{$sectionState.totalCount} fetched)
+    </a>
+{:else if $sectionState.totalCount > 0}
+    <span class="section-count">
+        {$sectionState.fetchedCount}/{$sectionState.totalCount} fetched
+    </span>
 {/if}
 
 <span class="section-indicator" hidden={!$sectionState.hasError}>
-    {$sectionState.hasRateLimit ? ' rate limited' : ' fetch failed'}
+    {$sectionState.hasRateLimit ? 'Rate limited' : 'Fetch failed'}
 </span>
 
 <style>
-    .section-fetch-pill {
-        margin-left: 0.6rem;
-        vertical-align: middle;
-        font-size: 0.72em;
-        line-height: 1;
-        padding: 0.26em 0.58em;
-        border: 1px solid currentColor;
-        border-radius: 999px;
-        background: transparent;
-        color: currentColor;
-        opacity: 0.75;
-        cursor: pointer;
+    .section-count {
+        margin-left: 0.55rem;
+        font-size: 0.78em;
+        color: #59636e;
     }
 
-    .section-fetch-pill:hover {
-        opacity: 1;
+    .section-count-link {
+        color: #0969da;
+        text-decoration: none;
     }
 
-    .section-fetch-pill:focus-visible {
-        outline: 1px solid currentColor;
-        outline-offset: 2px;
+    .section-count-link:hover {
+        text-decoration: underline;
+    }
+
+    .section-count-link:focus-visible {
+        border-radius: 4px;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.25);
     }
 
     .section-indicator {
         margin-left: 0.5rem;
-        font-size: 0.85em;
-        color: #ffb347;
+        font-size: 0.78em;
+        color: #9a6700;
     }
 </style>

@@ -113,6 +113,18 @@ export async function processAwesomeList(repoURL) {
     return parsedAwesomeList;
 }
 
+export function renderReadmeHtml(markdownText) {
+    const processor = unified()
+        .use(remarkParse)
+        .use(remarkGfm)
+        .use(remarkRehype)
+        .use(rehypeSlug)
+        .use(rehypeStringify);
+
+    const result = processor.processSync(markdownText);
+    return String(result);
+}
+
 export function transformLinkNode(linkNode) {
     const parsedRepoUrl = URL.parse(linkNode.url);
     parsedRepoUrl.hash = '';

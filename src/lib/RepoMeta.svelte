@@ -45,14 +45,11 @@
     }
 
     function renderRepoMetaText(state: RepoState) {
-        if (state.status === 'loading') {
-            return ' (loading...)';
-        }
         if (state.error) {
             if (state.error.rateLimited) {
-                return ' (rate limited)';
+                return 'rate limited';
             }
-            return ' (fetch failed)';
+            return 'fetch failed';
         }
         if (!state.info) {
             return '';
@@ -72,62 +69,103 @@
     }
 
     let metaText = $derived(renderRepoMetaText($repoState));
+    let actionLabel = $derived($repoState.error ? 'Retry' : 'Fetch');
 </script>
 
 <span class="repo-meta">
-    {#if $repoState.status !== 'loaded'}
+    {#if $repoState.status === 'loading'}
+        <span class="repo-meta-status loading">
+            <span class="loading-dot" aria-hidden="true"></span>
+            Fetching...
+        </span>
+    {:else if $repoState.status === 'loaded'}
+        <span class="repo-meta-text">{metaText}</span>
+    {:else}
+        {#if $repoState.status === 'error'}
+            <span class="repo-meta-status error">{metaText}</span>
+        {/if}
         <button
             class="repo-fetch-action"
             type="button"
-            disabled={$repoState.status === 'loading'}
             onclick={onFetch}
         >
-            (fetch)
+            {actionLabel}
         </button>
-    {:else}
-        <span class="repo-meta-text">{metaText}</span>
     {/if}
 </span>
 
 <style>
     .repo-meta {
-        font-size: 0.9em;
-        opacity: 0.9;
+        margin-left: 0.35rem;
+        font-size: 0.78rem;
+        color: #59636e;
         white-space: nowrap;
+        vertical-align: baseline;
     }
 
     .repo-meta-text {
-        margin-right: 0.4rem;
+        color: #59636e;
+    }
+
+    .repo-meta-status {
+        color: #59636e;
+    }
+
+    .repo-meta-status.error {
+        color: #9a6700;
+        margin-right: 0.35rem;
+    }
+
+    .repo-meta-status.loading {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
     }
 
     .repo-fetch-action {
-        margin-left: 0.25rem;
-        padding: 0;
-        border: 0;
-        background: transparent;
+        margin-left: 0.35rem;
+        padding: 0 0.5rem;
+        height: 24px;
+        border: 1px solid #d1d9e0;
+        border-radius: 6px;
+        background: linear-gradient(180deg, #f6f8fa, #f3f4f6);
         font: inherit;
-        font-size: 0.95em;
-        line-height: inherit;
-        color: currentColor;
-        opacity: 0.7;
+        font-size: 0.75rem;
+        font-weight: 500;
+        line-height: 1;
+        color: #24292f;
         cursor: pointer;
-        text-decoration: underline;
-        text-underline-offset: 2px;
     }
 
-    .repo-fetch-action:hover:enabled {
-        opacity: 1;
+    .repo-fetch-action:hover {
+        background: #f3f4f6;
+        border-color: #afb8c1;
     }
 
-    .repo-fetch-action:disabled {
-        opacity: 0.5;
-        cursor: default;
-        text-decoration: none;
+    .repo-fetch-action:active {
+        background: #ebedf0;
     }
 
     .repo-fetch-action:focus-visible {
-        outline: 1px solid currentColor;
-        outline-offset: 2px;
-        border-radius: 2px;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.25);
+    }
+
+    .loading-dot {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: #57606a;
+        animation: pulse 850ms ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+        0%,
+        100% {
+            opacity: 0.25;
+        }
+        50% {
+            opacity: 1;
+        }
     }
 </style>

@@ -1,8 +1,10 @@
 <script lang="ts">
     import {
         HowAwesomeError,
+        annotateAwesomeAST,
+        fetchAwesomeList,
         fetchRepoInformation,
-        processAwesomeList,
+        renderReadmeHtml,
     } from './lib/how-awesome';
     import { apiState } from './lib/how-awesome/github.svelte.js';
     import RepoMeta from './lib/RepoMeta.svelte';
@@ -36,9 +38,15 @@
         hasError: boolean;
         hasRateLimit: boolean;
         allLoaded: boolean;
+        fetchedCount: number;
+        totalCount: number;
     };
 
     type MountedComponent = ReturnType<typeof mount>;
+    type ReadmeViews = {
+        annotated: string;
+        original: string;
+    };
 
     let repoUrl: string | null = $state(
         'https://github.com/Strift/awesome-esports',
@@ -52,12 +60,15 @@
             return `/${repoUrl}`;
         }
     });
-    let annotatedAwesomeList: Promise<string> | null = $state(
+    let readmeViews: Promise<ReadmeViews> | null = $state(
         new Promise(() => {}),
     );
+    let activeTab: 'annotated' | 'original' = $state('annotated');
 
     let pageState: string = $state('repoSelectionView');
+    let pageError: string | null = $state(null);
     let listContainer: HTMLElement | null = $state(null);
+    let hasLoadedList: boolean = $state(false);
 
     const repoStoreByPath = new Map<string, Writable<RepoState>>();
     const repoMetaByHost = new Map<HTMLElement, MountedComponent>();
@@ -164,7 +175,7 @@
             node = node.nextElementSibling;
         }
 
-        return repoPaths;
+        return [...new Set(repoPaths)];
     }
 
     function ensureStatusBanner(container: HTMLElement) {
@@ -203,6 +214,8 @@
                 hasError: false,
                 hasRateLimit: false,
                 allLoaded: false,
+                fetchedCount: 0,
+                totalCount: 0,
             });
         }
 
@@ -210,6 +223,7 @@
             let hasError = false;
             let hasRateLimit = false;
             let allLoaded = true;
+            let fetchedCount = 0;
 
             for (const state of states) {
                 if (state.error) {
@@ -220,6 +234,8 @@
                 }
                 if (state.status !== 'loaded') {
                     allLoaded = false;
+                } else {
+                    fetchedCount += 1;
                 }
             }
 
@@ -227,6 +243,8 @@
                 hasError,
                 hasRateLimit,
                 allLoaded,
+                fetchedCount,
+                totalCount: states.length,
             };
         });
     }
@@ -267,6 +285,31 @@
         sectionMetaByHost.clear();
     }
 
+    function submitRepoSelection() {
+        clearMountedComponents();
+        repoStoreByPath.clear();
+        apiState.hasHitRateLimit = false;
+        hasLoadedList = false;
+        listContainer = null;
+        activeTab = 'annotated';
+        readmeViews = (async () => {
+            const repoReadme = await fetchAwesomeList(repoPath);
+            return {
+                annotated: annotateAwesomeAST(repoReadme, repoPath),
+                original: renderReadmeHtml(repoReadme),
+            };
+        })()
+            .then(result => {
+                hasLoadedList = true;
+                return result;
+            })
+            .catch(error => {
+                hasLoadedList = false;
+                throw error;
+            });
+        pageState = 'listView';
+    }
+
     function enhanceAwesomeList() {
         if (!listContainer) return;
 
@@ -287,56 +330,121 @@
 
     $effect(async () => {
         // Rerun when list content or container changes.
-        annotatedAwesomeList;
+        readmeViews;
         listContainer;
+        activeTab;
         await tick();
+        if (activeTab !== 'annotated') return;
         enhanceAwesomeList();
     });
 </script>
 
 <main>
-    <div
-        id="page-container"
-        class={{ 'repo-selection-view': pageState === 'repoSelectionView' }}
-    >
-        <div class="repo-selector">
-            <input
-                type="url"
-                bind:value={repoUrl}
-                placeholder="sindresorhus/awesome"
-            />
-            <input
-                type="button"
-                value="How awesome?"
-                onclick={() => {
-                    clearMountedComponents();
-                    repoStoreByPath.clear();
-                    apiState.hasHitRateLimit = false;
-                    annotatedAwesomeList = processAwesomeList(repoPath);
-                    pageState = 'listView';
-                }}
-            />
-        </div>
+    <div id="page-container">
+        <header class="page-header">
+            <h1>How Awesome</h1>
+            <p class="page-subtitle">
+                Add GitHub repo metadata to awesome lists.
+            </p>
+        </header>
 
-        <div>
-            {#await annotatedAwesomeList then annotatedAwesomeList}
-                <div class="markdown-body" bind:this={listContainer}>
-                    {@html annotatedAwesomeList}
+        <section class="repo-selector-box" hidden={hasLoadedList}>
+            <label class="repo-label" for="awesome-repo-input">Repository</label
+            >
+            <p class="repo-help">
+                Enter a GitHub awesome list repository URL or owner/repo path.
+            </p>
+            <form
+                class="repo-selector"
+                onsubmit={event => {
+                    event.preventDefault();
+                    submitRepoSelection();
+                }}
+            >
+                <div class="repo-input-wrap">
+                    <svg
+                        class="repo-input-icon"
+                        aria-hidden="true"
+                        viewBox="0 0 16 16"
+                        width="16"
+                        height="16"
+                    >
+                        <path
+                            fill="currentColor"
+                            d="M10.5 10.5a4.75 4.75 0 1 0-1 1l3.125 3.125a.75.75 0 1 0 1.06-1.06L10.5 10.5ZM6.75 10a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z"
+                        ></path>
+                    </svg>
+                    <!-- svelte-ignore a11y_autofocus -->
+                    <input
+                        id="awesome-repo-input"
+                        class="repo-input"
+                        type="url"
+                        autofocus
+                        bind:value={repoUrl}
+                        placeholder="How awesome?"
+                    />
                 </div>
-            {:catch err}
-                <div class="card alert">
-                    {#if err instanceof HowAwesomeError}
-                        Unable to process
-                        <a href={err.repoUrl}>
-                            {err.repoPath}
-                        </a>:
-                        <br />
-                        {err.message}
+                <button class="primary-action" type="submit">
+                    Analyze list
+                </button>
+            </form>
+        </section>
+
+        <div class="content-panel" hidden={pageState !== 'listView'}>
+            <div class="readme-tabs" role="tablist" aria-label="README view">
+                <button
+                    type="button"
+                    role="tab"
+                    class="readme-tab"
+                    class:active={activeTab === 'annotated'}
+                    aria-selected={activeTab === 'annotated'}
+                    onclick={() => {
+                        activeTab = 'annotated';
+                    }}
+                >
+                    Annotated README
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    class="readme-tab"
+                    class:active={activeTab === 'original'}
+                    aria-selected={activeTab === 'original'}
+                    onclick={() => {
+                        activeTab = 'original';
+                    }}
+                >
+                    Original README
+                </button>
+            </div>
+            <div class="content-panel-body">
+                {#await readmeViews}
+                    <div class="loading-state">Loading README...</div>
+                {:then readmeViews}
+                    {#if activeTab === 'annotated'}
+                        <div class="markdown-body" bind:this={listContainer}>
+                            {@html readmeViews.annotated}
+                        </div>
                     {:else}
-                        {err}
+                        <div class="markdown-body">
+                            {@html readmeViews.original}
+                        </div>
                     {/if}
-                </div>
-            {/await}
+                {:catch err}
+                    <div class="card alert">
+                        {#if err instanceof HowAwesomeError}
+                            Unable to process
+                            <a href={err.repoUrl}>
+                                {err.repoPath}
+                            </a>:
+                            <br />
+                            {err.message}
+                        {:else}
+                            {err}
+                        {/if}
+                    </div>
+                {/await}
+            </div>
         </div>
     </div>
 </main>
