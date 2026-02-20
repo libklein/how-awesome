@@ -10,6 +10,7 @@
     import RepoMeta from './lib/RepoMeta.svelte';
     import SectionMeta from './lib/SectionMeta.svelte';
     import 'github-markdown-css';
+    import AwesomeLogo from './awesome-logo.svelte';
     import { mount, tick, unmount } from 'svelte';
     import {
         derived,
@@ -339,18 +340,38 @@
     });
 </script>
 
+<header class="top-header">
+    <div class="header-content">
+        <span class="header-logo" aria-hidden="true">
+            <AwesomeLogo />
+        </span>
+        <span class="header-text">
+            <span class="header-title">How Awesome?</span>
+            <span class="header-description"
+                >Annotate awesome lists with repository statistics</span
+            >
+        </span>
+    </div>
+</header>
 <main>
     <div id="page-container">
-        <header class="page-header">
-            <h1>How Awesome</h1>
-            <p class="page-subtitle">
-                Add GitHub repo metadata to awesome lists.
-            </p>
-        </header>
-
         <section class="repo-selector-box" hidden={hasLoadedList}>
-            <label class="repo-label" for="awesome-repo-input">Repository</label
-            >
+            <label class="repo-label" for="awesome-repo-input">
+                <svg
+                    aria-hidden="true"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    version="1.1"
+                    width="16"
+                    data-view-component="true"
+                    class="repo-label-icon"
+                >
+                    <path
+                        d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"
+                    ></path>
+                </svg>
+                <span class="repo-label-body"> Repository </span>
+            </label>
             <p class="repo-help">
                 Enter a GitHub awesome list repository URL or owner/repo path.
             </p>
@@ -365,13 +386,14 @@
                     <svg
                         class="repo-input-icon"
                         aria-hidden="true"
-                        viewBox="0 0 16 16"
-                        width="16"
                         height="16"
+                        viewBox="0 0 16 16"
+                        version="1.1"
+                        width="16"
+                        data-view-component="true"
                     >
                         <path
-                            fill="currentColor"
-                            d="M10.5 10.5a4.75 4.75 0 1 0-1 1l3.125 3.125a.75.75 0 1 0 1.06-1.06L10.5 10.5ZM6.75 10a3.25 3.25 0 1 1 0-6.5 3.25 3.25 0 0 1 0 6.5Z"
+                            d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"
                         ></path>
                     </svg>
                     <!-- svelte-ignore a11y_autofocus -->
