@@ -105,13 +105,13 @@ a:hover {
 
 .repo-selector-box {
     border: 1px solid var(--gh-border-default);
-    border-radius: 6px;
+    border-radius: 0.1875rem;
     background: var(--gh-bg-default);
     padding: 1rem;
 }
 
-.repo-label {
-    display: inline-flex;
+.repo-selector-header {
+    display: flex;
     color: var(--gh-fg-default);
     font-size: 0.875rem;
     font-weight: 600;
@@ -120,14 +120,39 @@ a:hover {
     align-items: center;
 }
 
-.repo-label-body {
-    margin-left: 0.25rem;
+.repo-selector-header-body a {
+    font-weight: 600;
+    color: var(--gh-fg-default);
+}
+
+.repo-selector-header-logo {
+    width: 40px;
+    height: 40px;
+}
+
+.repo-selector-header-body {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    margin-left: 0.5rem;
+    color: var(--gh-fg-muted);
+    font-size: 0.875rem;
+    font-weight: 400;
+    justify-content: space-between;
+}
+
+.repo-help-container {
+    padding: 1em;
+    border: 1px solid var(--gh-border-default);
+    border-radius: 0.1875rem;
+    background: var(--gh-bg-subtle);
+    margin-bottom: 1rem;
 }
 
 .repo-help {
-    margin: 0 0 0.75rem;
-    color: var(--gh-fg-subtle);
-    font-size: 0.75rem;
+    margin: 0;
+    color: var(--gh-fg-default);
+    font-size: 1rem;
 }
 
 .repo-selector {
