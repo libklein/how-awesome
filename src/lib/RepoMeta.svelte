@@ -3,8 +3,10 @@
     import type { Readable } from 'svelte/store';
 
     type RepoInfo = {
-        stars: number | null;
-        updated_at: Date | null;
+        data: {
+            stars: number | null;
+            updated_at: Date | null;
+        };
     };
 
     type RepoError = {
@@ -54,8 +56,8 @@
         if (!state.info) {
             return '';
         }
-        const stars = formatStars(state.info.stars);
-        const updated = formatDate(state.info.updated_at);
+        const stars = formatStars(state.info.data.stars);
+        const updated = formatDate(state.info.data.updated_at);
         if (stars && updated) {
             return ` (★ ${stars} · updated ${updated})`;
         }

@@ -34,11 +34,11 @@ class Repository {
             return;
         }
         const repoInfo = await fetchRepoInformation(this.path);
-        this.stars = repoInfo.stars;
-        this.createdAt = repoInfo.created_at;
-        this.archived = repoInfo.archived;
-        this.openIssues = repoInfo.open_issues;
-        this.updatedAt = repoInfo.updated_at;
+        this.stars = repoInfo.data.stars;
+        this.createdAt = repoInfo.data.created_at;
+        this.archived = repoInfo.data.archived;
+        this.openIssues = repoInfo.data.open_issues;
+        this.updatedAt = repoInfo.data.updated_at;
     }
 }
 
@@ -68,6 +68,49 @@ export class HowAwesomeError extends Error {
     }
 }
 
+function parseHeaderInt(value) {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseOptionalNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string' && value !== '') {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isNaN(parsed) ? null : parsed;
+    }
+    return null;
+}
+
+function normalizeRatelimit(rateLimitPayload, headers) {
+    const coreRateLimit =
+        rateLimitPayload?.resources?.core ?? rateLimitPayload?.rate ?? null;
+    const headerReset = parseHeaderInt(headers?.get?.('x-ratelimit-reset'));
+    const resetValue = parseOptionalNumber(coreRateLimit?.reset) ?? headerReset;
+
+    return {
+        limit:
+            parseOptionalNumber(coreRateLimit?.limit) ??
+            parseHeaderInt(headers?.get?.('x-ratelimit-limit')),
+        remaining:
+            parseOptionalNumber(coreRateLimit?.remaining) ??
+            parseHeaderInt(headers?.get?.('x-ratelimit-remaining')),
+        used:
+            parseOptionalNumber(coreRateLimit?.used) ??
+            parseHeaderInt(headers?.get?.('x-ratelimit-used')),
+        reset: resetValue ? new Date(resetValue * 1000) : null,
+        resource:
+            coreRateLimit?.resource ??
+            headers?.get?.('x-ratelimit-resource') ??
+            null,
+    };
+}
+
 export async function fetchRepoInformation(repoPath) {
     const response = await queryGithubApi(
         `https://api.github.com/repos${repoPath}`,
@@ -82,17 +125,36 @@ export async function fetchRepoInformation(repoPath) {
         );
         throw error;
     }
+
     return {
-        stars: response?.data?.stargazers_count ?? null,
-        created_at: response?.data?.created_at
-            ? new Date(response.data.created_at)
-            : null,
-        archived: response?.data?.archived ?? null,
-        open_issues: response?.data?.open_issues_count ?? null,
-        updated_at: response?.data?.updated_at
-            ? new Date(response.data.updated_at)
-            : null,
+        data: {
+            stars: response?.data?.stargazers_count ?? null,
+            created_at: response?.data?.created_at
+                ? new Date(response.data.created_at)
+                : null,
+            archived: response?.data?.archived ?? null,
+            open_issues: response?.data?.open_issues_count ?? null,
+            updated_at: response?.data?.updated_at
+                ? new Date(response.data.updated_at)
+                : null,
+        },
+        ratelimit: normalizeRatelimit(null, response.headers),
     };
+}
+
+export async function fetchRateLimitInformation() {
+    const response = await queryGithubApi('https://api.github.com/rate_limit');
+    if (!response.ok) {
+        const error = new Error(
+            response?.data?.message ?? `GitHub API error (${response.status})`,
+        );
+        error.status = response.status;
+        error.rateLimitRemaining = response.headers?.get?.(
+            'x-ratelimit-remaining',
+        );
+        throw error;
+    }
+    return normalizeRatelimit(response.data, response.headers);
 }
 
 export async function fetchAwesomeList(repoPath) {

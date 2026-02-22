@@ -3,6 +3,7 @@
         HowAwesomeError,
         annotateAwesomeAST,
         fetchAwesomeList,
+        fetchRateLimitInformation,
         fetchRepoInformation,
         renderReadmeHtml,
     } from './lib/how-awesome';
@@ -49,6 +50,64 @@
         original: string;
     };
 
+    function parseRepoPath(value: string | null): string | null {
+        if (!value) return null;
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+
+        try {
+            const parsed = new URL(trimmed);
+            if (parsed.hostname !== 'github.com') {
+                return null;
+            }
+            const [owner, repo] = parsed.pathname
+                .split('/')
+                .filter(Boolean)
+                .slice(0, 2);
+            if (!owner || !repo) {
+                return null;
+            }
+            return `/${owner}/${repo}`;
+        } catch {
+            const [owner, repo] = trimmed
+                .replace(/^\/+|\/+$/g, '')
+                .split('/')
+                .filter(Boolean)
+                .slice(0, 2);
+            if (!owner || !repo) {
+                return null;
+            }
+            return `/${owner}/${repo}`;
+        }
+    }
+
+    function repoUrlFromPath(path: string): string {
+        return `https://github.com${path}`;
+    }
+
+    function getQueryRepoPath(): string | null {
+        if (typeof window === 'undefined') return null;
+        const queryRepo = new URLSearchParams(window.location.search).get(
+            'repo',
+        );
+        return parseRepoPath(queryRepo);
+    }
+
+    function syncRepoQueryParam(path: string | null) {
+        if (typeof window === 'undefined') return;
+        const url = new URL(window.location.href);
+        if (path) {
+            url.searchParams.set('repo', path.slice(1));
+        } else {
+            url.searchParams.delete('repo');
+        }
+        window.history.replaceState(
+            null,
+            '',
+            `${url.pathname}${url.search}${url.hash}`,
+        );
+    }
+
     let repoUrl: string | null = $state(
         'https://github.com/Strift/awesome-esports',
     );
@@ -64,12 +123,45 @@
     let readmeViews: Promise<ReadmeViews> | null = $state(
         new Promise(() => {}),
     );
+    let hasLoadedInitialRateLimit: boolean = $state(false);
+    let hasAppliedQueryRepo: boolean = $state(false);
     let activeTab: 'annotated' | 'original' = $state('annotated');
 
     let pageState: string = $state('repoSelectionView');
-    let pageError: string | null = $state(null);
     let listContainer: HTMLElement | null = $state(null);
     let hasLoadedList: boolean = $state(false);
+
+    let footerDimissed: boolean = $state(false);
+    let showFooter: boolean = $derived.by(() => {
+        return !footerDimissed && pageState === 'listView';
+    });
+    let footerVariant: 'hint' | 'usage' | 'attention' | 'hit' = $derived.by(
+        () => {
+            if (apiState.hasHitRateLimit) {
+                return 'hit';
+            }
+            if (!apiState.ratelimit) {
+                return 'hint';
+            }
+            if (
+                typeof apiState.ratelimit.remaining === 'number' &&
+                apiState.ratelimit.remaining < 10
+            ) {
+                return 'attention';
+            }
+            return 'usage';
+        },
+    );
+    let rateLimitResetText: string = $derived.by(() => {
+        const reset = apiState.ratelimit?.reset;
+        if (!(reset instanceof Date) || Number.isNaN(reset.getTime())) {
+            return 'an unknown time';
+        }
+        return new Intl.DateTimeFormat('en-US', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+        }).format(reset);
+    });
 
     const repoStoreByPath = new Map<string, Writable<RepoState>>();
     const repoMetaByHost = new Map<HTMLElement, MountedComponent>();
@@ -90,34 +182,6 @@
         return repoStoreByPath.get(repoPath)!;
     }
 
-    function updateGlobalStatus() {
-        if (!listContainer) return;
-        const banner = listContainer.querySelector('.fetch-status-banner');
-        if (!banner) return;
-        let hasError = false;
-        let hasRateLimit = false;
-
-        for (const repoStore of repoStoreByPath.values()) {
-            const state = get(repoStore);
-            if (state.error) {
-                hasError = true;
-                if (state.error.rateLimited) {
-                    hasRateLimit = true;
-                }
-            }
-        }
-
-        if (hasError) {
-            banner.hidden = false;
-            banner.textContent = hasRateLimit
-                ? 'Some repo lookups failed due to GitHub rate limits.'
-                : 'Some repo lookups failed.';
-        } else {
-            banner.hidden = true;
-            banner.textContent = '';
-        }
-    }
-
     async function fetchRepo(repoPath: string) {
         const repoStore = getRepoStore(repoPath);
         const state = get(repoStore);
@@ -128,7 +192,6 @@
             status: 'loading',
             error: null,
         });
-        updateGlobalStatus();
 
         try {
             const info = await fetchRepoInformation(repoPath);
@@ -150,8 +213,6 @@
                 },
             });
         }
-
-        updateGlobalStatus();
     }
 
     function getSectionRepoPaths(section: Element): string[] {
@@ -177,14 +238,6 @@
         }
 
         return [...new Set(repoPaths)];
-    }
-
-    function ensureStatusBanner(container: HTMLElement) {
-        if (container.querySelector('.fetch-status-banner')) return;
-        const banner = document.createElement('div');
-        banner.className = 'fetch-status-banner';
-        banner.hidden = true;
-        container.prepend(banner);
     }
 
     function mountRepoMeta(link: HTMLAnchorElement, repoPath: string) {
@@ -286,17 +339,22 @@
         sectionMetaByHost.clear();
     }
 
-    function submitRepoSelection() {
+    function submitRepoSelection(overrideRepoPath?: string) {
+        const selectedRepoPath = overrideRepoPath ?? repoPath;
+        if (!selectedRepoPath) {
+            return;
+        }
+
         clearMountedComponents();
         repoStoreByPath.clear();
-        apiState.hasHitRateLimit = false;
         hasLoadedList = false;
         listContainer = null;
         activeTab = 'annotated';
+        syncRepoQueryParam(selectedRepoPath);
         readmeViews = (async () => {
-            const repoReadme = await fetchAwesomeList(repoPath);
+            const repoReadme = await fetchAwesomeList(selectedRepoPath);
             return {
-                annotated: annotateAwesomeAST(repoReadme, repoPath),
+                annotated: annotateAwesomeAST(repoReadme, selectedRepoPath),
                 original: renderReadmeHtml(repoReadme),
             };
         })()
@@ -311,10 +369,16 @@
         pageState = 'listView';
     }
 
+    async function loadInitialRateLimit() {
+        try {
+            await fetchRateLimitInformation();
+        } catch {
+            // Continue without initial rate-limit data if request fails.
+        }
+    }
+
     function enhanceAwesomeList() {
         if (!listContainer) return;
-
-        ensureStatusBanner(listContainer);
 
         const links = listContainer.querySelectorAll('a.awesome-link');
         links.forEach(link => {
@@ -325,8 +389,6 @@
 
         const sections = listContainer.querySelectorAll('.awesome-section');
         sections.forEach(section => mountSectionMeta(section));
-
-        updateGlobalStatus();
     }
 
     $effect(async () => {
@@ -337,6 +399,21 @@
         await tick();
         if (activeTab !== 'annotated') return;
         enhanceAwesomeList();
+    });
+
+    $effect(() => {
+        if (hasLoadedInitialRateLimit) return;
+        hasLoadedInitialRateLimit = true;
+        void loadInitialRateLimit();
+    });
+
+    $effect(() => {
+        if (hasAppliedQueryRepo) return;
+        hasAppliedQueryRepo = true;
+        const queryRepoPath = getQueryRepoPath();
+        if (!queryRepoPath) return;
+        repoUrl = repoUrlFromPath(queryRepoPath);
+        submitRepoSelection(queryRepoPath);
     });
 </script>
 
@@ -364,7 +441,9 @@
                     <span
                         ><a href="https://github.com/libklein">libklein</a>
                         published
-                        <a>How Awesome?</a></span
+                        <a href="https://github.com/libklein/how-awesome"
+                            >How Awesome?</a
+                        ></span
                     >
                     <span>just now</span>
                 </div>
@@ -376,8 +455,8 @@
                     commit date, and more.
                 </p>
                 <p class="repo-help">
-                    Getting started is as easy as entering the URL of an awesome
-                    list or the owner/repo path.
+                    Getting started is as easy as entering the GitHub URL or
+                    <code>owner/repo</code> path of any awesome list.
                 </p>
             </section>
             <form
@@ -475,6 +554,53 @@
         </div>
     </div>
 </main>
+<footer
+    class:hidden={!showFooter}
+    class:footer-hint={footerVariant === 'hint'}
+    class:footer-usage={footerVariant === 'usage'}
+    class:footer-attention={footerVariant === 'attention'}
+    class:footer-hit={footerVariant === 'hit'}
+>
+    <div class="footer-content">
+        <span class="footer-message">
+            {#if footerVariant === 'hit'}
+                Rate limit hit. GitHub API requests reset at {rateLimitResetText}.
+            {:else if footerVariant === 'usage' || footerVariant === 'attention'}
+                GitHub API usage: {apiState.ratelimit.used}/{apiState.ratelimit
+                    .limit}. Resets at {rateLimitResetText}.
+            {:else}
+                GitHub API requests are rate-limited to ~60 requests per day.
+            {/if}
+            <a
+                href="https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#primary-rate-limit-for-unauthenticated-users"
+                >Learn more</a
+            >.
+        </span>
+        <button
+            class="footer-dismiss-button"
+            aria-label="dismiss"
+            onclick={() => {
+                footerDimissed = true;
+            }}
+        >
+            <svg
+                aria-hidden="true"
+                focusable="false"
+                class="footer-dismiss-icon"
+                viewBox="0 0 16 16"
+                width="16"
+                height="16"
+                fill="currentColor"
+                display="inline-block"
+                overflow="visible"
+                style="vertical-align: text-bottom;"
+                ><path
+                    d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"
+                ></path></svg
+            >
+        </button>
+    </div>
+</footer>
 
 <style>
 </style>
