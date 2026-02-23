@@ -1,6 +1,4 @@
 <script lang="ts">
-    import type { Readable } from 'svelte/store';
-
     type SectionState = {
         hasError: boolean;
         hasRateLimit: boolean;
@@ -13,12 +11,12 @@
         sectionState,
         onFetchAll,
     }: {
-        sectionState: Readable<SectionState>;
+        sectionState: SectionState;
         onFetchAll: () => void;
     } = $props();
 </script>
 
-{#if $sectionState.totalCount > 0 && !$sectionState.allLoaded}
+{#if sectionState.totalCount > 0 && !sectionState.allLoaded}
     <a
         class="section-count section-count-link"
         href="#"
@@ -27,16 +25,16 @@
             onFetchAll();
         }}
     >
-        Fetch all ({$sectionState.fetchedCount}/{$sectionState.totalCount} fetched)
+        Fetch all ({sectionState.fetchedCount}/{sectionState.totalCount} fetched)
     </a>
-{:else if $sectionState.totalCount > 0}
+{:else if sectionState.totalCount > 0}
     <span class="section-count">
-        {$sectionState.fetchedCount}/{$sectionState.totalCount} fetched
+        {sectionState.fetchedCount}/{sectionState.totalCount} fetched
     </span>
 {/if}
 
-<span class="section-indicator" hidden={!$sectionState.hasError}>
-    {$sectionState.hasRateLimit ? 'Rate limited' : 'Fetch failed'}
+<span class="section-indicator" hidden={!sectionState.hasError}>
+    {sectionState.hasRateLimit ? 'Rate limited' : 'Fetch failed'}
 </span>
 
 <style>

@@ -1,9 +1,17 @@
-export let apiState = $state({
-    token: null,
-    hasHitRateLimit: false,
-    isAuthenticated: false,
-    ratelimit: null,
-});
+import { persistedState } from 'svelte-persisted-state';
+
+export let apiState = persistedState(
+    'apiState',
+    {
+        token: null,
+        hasHitRateLimit: false,
+        isAuthenticated: false,
+        ratelimit: null,
+    },
+    {
+        storage: 'session',
+    },
+);
 
 function parseOptionalInt(value) {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -108,11 +116,14 @@ function mergeRateLimitSnapshot(current, next) {
 }
 
 function updateRateLimitState(nextSnapshot, responseStatus) {
-    const previousSnapshot = apiState.ratelimit;
-    const mergedSnapshot = mergeRateLimitSnapshot(previousSnapshot, nextSnapshot);
+    const previousSnapshot = apiState.current.ratelimit;
+    const mergedSnapshot = mergeRateLimitSnapshot(
+        previousSnapshot,
+        nextSnapshot,
+    );
 
     if (mergedSnapshot) {
-        apiState.ratelimit = mergedSnapshot;
+        apiState.current.ratelimit = mergedSnapshot;
     }
 
     const previousResetMillis = dateToMillis(previousSnapshot?.reset);
@@ -126,11 +137,11 @@ function updateRateLimitState(nextSnapshot, responseStatus) {
         responseStatus === 403 && nextSnapshot?.remaining === 0;
     const isMergedHit = mergedSnapshot?.remaining === 0;
 
-    if (apiState.hasHitRateLimit && movedToNewWindow && !isMergedHit) {
-        apiState.hasHitRateLimit = false;
+    if (apiState.current.hasHitRateLimit && movedToNewWindow && !isMergedHit) {
+        apiState.current.hasHitRateLimit = false;
     }
     if (isExplicitHit || isMergedHit) {
-        apiState.hasHitRateLimit = true;
+        apiState.current.hasHitRateLimit = true;
     }
 }
 
@@ -139,8 +150,8 @@ export async function queryGithubApi(apiURL) {
     const headers = {
         Accept: 'application/vnd.github+json',
     };
-    if (apiState.token) {
-        headers.Authorization = `Bearer ${apiState.token}`;
+    if (apiState.current.token) {
+        headers.Authorization = `Bearer ${apiState.current.token}`;
     }
     const response = await fetch(apiURL, { headers });
     let data = null;

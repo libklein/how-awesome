@@ -10,17 +10,10 @@
     import { apiState } from './lib/how-awesome/github.svelte.js';
     import RepoMeta from './lib/RepoMeta.svelte';
     import SectionMeta from './lib/SectionMeta.svelte';
+    import { repoStateFor } from './lib/how-awesome/repo-cache.svelte.js';
     import 'github-markdown-css';
     import AwesomeLogo from './awesome-logo.svelte';
     import { mount, tick, unmount } from 'svelte';
-    import {
-        derived,
-        get,
-        readable,
-        type Readable,
-        type Writable,
-        writable,
-    } from 'svelte/store';
 
     type RepoInfo = Awaited<ReturnType<typeof fetchRepoInformation>>;
 
@@ -137,15 +130,15 @@
     });
     let footerVariant: 'hint' | 'usage' | 'attention' | 'hit' = $derived.by(
         () => {
-            if (apiState.hasHitRateLimit) {
+            if (apiState.current.hasHitRateLimit) {
                 return 'hit';
             }
-            if (!apiState.ratelimit) {
+            if (!apiState.current.ratelimit) {
                 return 'hint';
             }
             if (
-                typeof apiState.ratelimit.remaining === 'number' &&
-                apiState.ratelimit.remaining < 10
+                typeof apiState.current.ratelimit.remaining === 'number' &&
+                apiState.current.ratelimit.remaining < 10
             ) {
                 return 'attention';
             }
@@ -153,7 +146,7 @@
         },
     );
     let rateLimitResetText: string = $derived.by(() => {
-        const reset = apiState.ratelimit?.reset;
+        const reset = apiState.current.ratelimit?.reset;
         if (!(reset instanceof Date) || Number.isNaN(reset.getTime())) {
             return 'an unknown time';
         }
@@ -163,55 +156,37 @@
         }).format(reset);
     });
 
-    const repoStoreByPath = new Map<string, Writable<RepoState>>();
     const repoMetaByHost = new Map<HTMLElement, MountedComponent>();
     const sectionMetaByHost = new Map<HTMLElement, MountedComponent>();
 
-    function createInitialRepoState(): RepoState {
-        return {
-            status: 'idle',
-            info: null,
-            error: null,
-        };
-    }
-
-    function getRepoStore(repoPath: string): Writable<RepoState> {
-        if (!repoStoreByPath.has(repoPath)) {
-            repoStoreByPath.set(repoPath, writable(createInitialRepoState()));
-        }
-        return repoStoreByPath.get(repoPath)!;
-    }
-
     async function fetchRepo(repoPath: string) {
-        const repoStore = getRepoStore(repoPath);
-        const state = get(repoStore);
-        if (state.status === 'loading' || state.status === 'loaded') return;
+        const repoState = repoStateFor(repoPath);
+        if (repoState.status === 'loading' || repoState.status === 'loaded')
+            return;
 
-        repoStore.set({
-            ...state,
-            status: 'loading',
-            error: null,
-        });
+        repoState.status = 'loading';
+        repoState.error = null;
 
         try {
             const info = await fetchRepoInformation(repoPath);
-            repoStore.set({
+            repoState.state = {
                 status: 'loaded',
                 info,
                 error: null,
-            });
+            };
         } catch (error) {
-            repoStore.set({
-                ...get(repoStore),
+            repoState.state = {
+                ...repoState.state,
                 status: 'error',
                 error: {
                     message: error?.message ?? 'Fetch failed',
                     status: error?.status,
                     rateLimited:
                         error?.rateLimitRemaining === '0' ||
-                        (error?.status === 403 && apiState.hasHitRateLimit),
+                        (error?.status === 403 &&
+                            apiState.current.hasHitRateLimit),
                 },
-            });
+            };
         }
     }
 
@@ -250,7 +225,7 @@
         const component = mount(RepoMeta, {
             target: host,
             props: {
-                repoState: getRepoStore(repoPath),
+                repoState: repoStateFor(repoPath),
                 onFetch: () => fetchRepo(repoPath),
             },
         });
@@ -259,48 +234,54 @@
         link.dataset.repoMetaMounted = 'true';
     }
 
-    function buildSectionStateStore(
-        repoPaths: string[],
-    ): Readable<SectionState> {
-        const repoStores = repoPaths.map(repoPath => getRepoStore(repoPath));
-        if (repoStores.length === 0) {
-            return readable({
-                hasError: false,
-                hasRateLimit: false,
-                allLoaded: false,
-                fetchedCount: 0,
-                totalCount: 0,
-            });
-        }
+    function computeSectionState(repoPaths: string[]): SectionState {
+        let hasError = false;
+        let hasRateLimit = false;
+        let allLoaded = repoPaths.length > 0;
+        let fetchedCount = 0;
 
-        return derived(repoStores, states => {
-            let hasError = false;
-            let hasRateLimit = false;
-            let allLoaded = true;
-            let fetchedCount = 0;
-
-            for (const state of states) {
-                if (state.error) {
-                    hasError = true;
-                    if (state.error.rateLimited) {
-                        hasRateLimit = true;
-                    }
-                }
-                if (state.status !== 'loaded') {
-                    allLoaded = false;
-                } else {
-                    fetchedCount += 1;
+        for (const repoPath of repoPaths) {
+            const state = repoStateFor(repoPath).state;
+            if (state.error) {
+                hasError = true;
+                if (state.error.rateLimited) {
+                    hasRateLimit = true;
                 }
             }
+            if (state.status !== 'loaded') {
+                allLoaded = false;
+            } else {
+                fetchedCount += 1;
+            }
+        }
 
-            return {
-                hasError,
-                hasRateLimit,
-                allLoaded,
-                fetchedCount,
-                totalCount: states.length,
-            };
-        });
+        return {
+            hasError,
+            hasRateLimit,
+            allLoaded,
+            fetchedCount,
+            totalCount: repoPaths.length,
+        };
+    }
+
+    function buildSectionStateView(repoPaths: string[]) {
+        return {
+            get hasError() {
+                return computeSectionState(repoPaths).hasError;
+            },
+            get hasRateLimit() {
+                return computeSectionState(repoPaths).hasRateLimit;
+            },
+            get allLoaded() {
+                return computeSectionState(repoPaths).allLoaded;
+            },
+            get fetchedCount() {
+                return computeSectionState(repoPaths).fetchedCount;
+            },
+            get totalCount() {
+                return computeSectionState(repoPaths).totalCount;
+            },
+        };
     }
 
     function mountSectionMeta(section: Element) {
@@ -312,7 +293,7 @@
         host.className = 'section-meta-host';
         section.appendChild(host);
 
-        const sectionState = buildSectionStateStore(repoPaths);
+        const sectionState = buildSectionStateView(repoPaths);
         const component = mount(SectionMeta, {
             target: host,
             props: {
@@ -346,7 +327,6 @@
         }
 
         clearMountedComponents();
-        repoStoreByPath.clear();
         hasLoadedList = false;
         listContainer = null;
         activeTab = 'annotated';
@@ -566,8 +546,9 @@
             {#if footerVariant === 'hit'}
                 Rate limit hit. GitHub API requests reset at {rateLimitResetText}.
             {:else if footerVariant === 'usage' || footerVariant === 'attention'}
-                GitHub API usage: {apiState.ratelimit.used}/{apiState.ratelimit
-                    .limit}. Resets at {rateLimitResetText}.
+                GitHub API usage:
+                {apiState.current.ratelimit?.used ?? 0}/{apiState.current
+                    .ratelimit?.limit ?? 60}. Resets at {rateLimitResetText}.
             {:else}
                 GitHub API requests are rate-limited to ~60 requests per day.
             {/if}

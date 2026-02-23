@@ -1,6 +1,5 @@
 <script lang="ts">
     import { formatDistanceToNow } from 'date-fns';
-    import type { Readable } from 'svelte/store';
 
     type RepoInfo = {
         data: {
@@ -21,11 +20,18 @@
         error: RepoError | null;
     };
 
+    type RepoStateView = {
+        state: RepoState;
+        status: RepoState['status'];
+        info: RepoInfo | null;
+        error: RepoError | null;
+    };
+
     let {
         repoState,
         onFetch,
     }: {
-        repoState: Readable<RepoState>;
+        repoState: RepoStateView;
         onFetch: () => void;
     } = $props();
 
@@ -70,20 +76,20 @@
         return '';
     }
 
-    let metaText = $derived(renderRepoMetaText($repoState));
-    let actionLabel = $derived($repoState.error ? 'Retry' : 'Fetch');
+    let metaText = $derived(renderRepoMetaText(repoState.state));
+    let actionLabel = $derived(repoState.error ? 'Retry' : 'Fetch');
 </script>
 
 <span class="repo-meta">
-    {#if $repoState.status === 'loading'}
+    {#if repoState.status === 'loading'}
         <span class="repo-meta-status loading">
             <span class="loading-dot" aria-hidden="true"></span>
             Fetching...
         </span>
-    {:else if $repoState.status === 'loaded'}
+    {:else if repoState.status === 'loaded'}
         <span class="repo-meta-text">{metaText}</span>
     {:else}
-        {#if $repoState.status === 'error'}
+        {#if repoState.status === 'error'}
             <span class="repo-meta-status error">{metaText}</span>
         {/if}
         <button
