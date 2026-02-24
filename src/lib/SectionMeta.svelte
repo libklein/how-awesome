@@ -33,10 +33,6 @@
     </span>
 {/if}
 
-<span class="section-indicator" hidden={!sectionState.hasError}>
-    {sectionState.hasRateLimit ? 'Rate limited' : 'Fetch failed'}
-</span>
-
 <style>
     .section-count {
         margin-left: 0.55rem;

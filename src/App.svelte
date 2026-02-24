@@ -349,6 +349,15 @@
         pageState = 'listView';
     }
 
+    function goToRepoSelection() {
+        clearMountedComponents();
+        hasLoadedList = false;
+        listContainer = null;
+        activeTab = 'annotated';
+        pageState = 'repoSelectionView';
+        syncRepoQueryParam(null);
+    }
+
     async function loadInitialRateLimit() {
         try {
             await fetchRateLimitInformation();
@@ -398,17 +407,23 @@
 </script>
 
 <header class="top-header">
-    <div class="header-content">
-        <span class="header-logo" aria-hidden="true">
-            <AwesomeLogo />
+    <button
+        type="button"
+        class="header-home-button"
+        onclick={goToRepoSelection}
+    >
+        <span class="header-content">
+            <span class="header-logo" aria-hidden="true">
+                <AwesomeLogo />
+            </span>
+            <span class="header-text">
+                <span class="header-title">How Awesome?</span>
+                <span class="header-description"
+                    >Annotate awesome lists with repository statistics</span
+                >
+            </span>
         </span>
-        <span class="header-text">
-            <span class="header-title">How Awesome?</span>
-            <span class="header-description"
-                >Annotate awesome lists with repository statistics</span
-            >
-        </span>
-    </div>
+    </button>
 </header>
 <main>
     <div id="page-container">
@@ -546,9 +561,9 @@
             {#if footerVariant === 'hit'}
                 Rate limit hit. GitHub API requests reset at {rateLimitResetText}.
             {:else if footerVariant === 'usage' || footerVariant === 'attention'}
-                GitHub API usage:
-                {apiState.current.ratelimit?.used ?? 0}/{apiState.current
-                    .ratelimit?.limit ?? 60}. Resets at {rateLimitResetText}.
+                Can make {(apiState.current.ratelimit?.limit ?? 60) -
+                    (apiState.current.ratelimit?.used ?? 0)} more requests before
+                hiting GitHub API quota. Resets on {rateLimitResetText}.
             {:else}
                 GitHub API requests are rate-limited to ~60 requests per day.
             {/if}
