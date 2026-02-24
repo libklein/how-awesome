@@ -137,3 +137,9 @@ dist
 
 # SvelteKit build / generate output
 .svelte-kit
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
