@@ -101,15 +101,15 @@
         );
     }
 
-    let repoUrl: string | null = $state(
-        'https://github.com/Strift/awesome-esports',
-    );
+    let repoUrl: string | null = $state('');
     let repoPath: string | null = $derived.by(() => {
         if (!repoUrl) return null;
         try {
             return new URL(repoUrl).pathname;
         } catch (e) {
-            // TODO: Parse properly
+            if (repoUrl.startsWith('/')) {
+                return repoUrl;
+            }
             return `/${repoUrl}`;
         }
     });
@@ -479,7 +479,7 @@
                     <input
                         id="awesome-repo-input"
                         class="repo-input"
-                        type="url"
+                        type="text"
                         autofocus
                         bind:value={repoUrl}
                         placeholder="How awesome?"

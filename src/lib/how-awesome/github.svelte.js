@@ -146,7 +146,6 @@ function updateRateLimitState(nextSnapshot, responseStatus) {
 }
 
 export async function queryGithubApi(apiURL) {
-    console.log(`Querying GitHub API: ${apiURL}`);
     const headers = {
         Accept: 'application/vnd.github+json',
     };
