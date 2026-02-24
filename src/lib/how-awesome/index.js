@@ -158,13 +158,19 @@ export async function fetchRateLimitInformation() {
 }
 
 export async function fetchAwesomeList(repoPath) {
-    for (const readmeFilename of ['README.md', 'readme.md']) {
-        const url = `https://raw.githubusercontent.com${repoPath}/main/${readmeFilename}`;
-        const response = await fetch(url);
-        if (!response.ok) {
-            continue;
+    const response = await queryGithubApi(
+        `https://api.github.com/repos${repoPath}/readme`,
+    );
+    if (response.ok) {
+        if (response.data?.content) {
+            // Decode content from base64
+            return atob(response.data.content.replace(/\s/g, ''));
         }
-        return await response.text();
+        // Fetch from raw URL
+        const rawResponse = await fetch(response.data.download_url);
+        if (rawResponse.ok) {
+            return await rawResponse.text();
+        }
     }
     throw new HowAwesomeError(`Failed to fetch README.md`, repoPath);
 }
